@@ -1,3 +1,4 @@
+import time
 from concurrent.futures import ThreadPoolExecutor
 import requests
 from bs4 import BeautifulSoup
@@ -9,7 +10,7 @@ from oauth2client.service_account import ServiceAccountCredentials
 import datetime
 
 
-def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output1", creds_file="credentials.json"):
+def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output100", creds_file="credentials.json"):
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, scope)
     client = gspread.authorize(creds)
@@ -23,10 +24,9 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
 
     # Official headers with 'Match' instead of home_team & away_team
     fixed_headers = [
-        "ulr_match", "date", "competition", "Match", "stadium",
-        "company", "companyimg", "url", "readmore",
-        "info", "nights", "buytype", "flight", "type",
-        "matchticketincluded", "flightincluded"
+        "match_url", "date", "competition", "Match", "stadium",
+        "company", "url",
+        "info", "nights", "flight", "type",
     ]
 
     today = datetime.date.today().strftime('%d-%m-%Y')
@@ -36,7 +36,7 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
         sheet.update([fixed_headers], 'A1')
         existing_data = sheet.get_all_values()
 
-    headers = existing_data[0]  # Get headers from first row
+    headers = existing_data[0]
     rows = existing_data[1:]
 
     if "url" not in headers:
@@ -57,25 +57,13 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
         url = match.get("url", "")
         price = match.get("price", None)
 
-        # clean price
-        if isinstance(price, str):
-            price = ''.join(filter(lambda x: x.isdigit() or x == '.', price.replace(",", ".")))
-        if price == "":
-            price = None
-
-        # build row based on current headers
         row = []
         for h in headers:
-            if h == "Match":
-                home = match.get("home_team", "").strip()
-                away = match.get("away_team", "").strip()
-                row.append(f"{home} vs {away}")
-            elif h == today:
+            if h == today:
                 row.append(price)
             else:
                 row.append(match.get(h, ""))
 
-        # check if row needs to update or create
         if url in url_to_row:
             existing_row = url_to_row[url]
             while len(existing_row) < len(headers):
@@ -89,7 +77,6 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
 
     if updated_rows:
         sheet.update(updated_rows, 'A2')
-
 
     client.open(sheet_name).share('mostafaemadss21@gmail.com', perm_type='user', role='writer')
 
@@ -329,14 +316,29 @@ def check_price_domain_price(data_json_ticket):
             new_price = check_find_price(link_company_new, match['company'])
             match['price'] = new_price
             match['price'] = clean_price(new_price)
-        return match
+
+        processed_match = {
+            'company': match.get('company', ''),
+            'info': match.get('info', ''),
+            'price': match.get('price', ''),
+            'nights': match.get('nights', ''),
+            'url': convert_url(match.get('url', '')) or '',
+            'type': match.get('type', ''),
+            'match_url': match.get('ulr_match', ''),
+            'date': match.get('date', '').lstrip("'"),
+            'Match': f"{match.get('home_team', '').strip()} vs {match.get('away_team', '').strip()}",
+            'stadium': match.get('stadium', ''),
+            'competition': match.get('competition', ''),
+        }
+        print(processed_match)
+        return processed_match
 
     with ThreadPoolExecutor(max_workers=10) as executor:
         updated_data = list(executor.map(process_price, data_json_ticket))
 
 
 
-    save_to_google_sheet_with_prices_over_time(updated_data, sheet_name="Scraping Output1")
+    save_to_google_sheet_with_prices_over_time(updated_data, sheet_name="Scraping Output100")
 
 
 
