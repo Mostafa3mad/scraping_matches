@@ -91,7 +91,7 @@ def remove_dict_duplicates_keep_order(lst):
     seen = set()
     unique = []
     for d in lst:
-        t = tuple(sorted(d.items()))  # حوّل الدكت إلى tuple يمكن وضعه في set
+        t = tuple(sorted(d.items()))
         if t not in seen:
             seen.add(t)
             unique.append(d)
