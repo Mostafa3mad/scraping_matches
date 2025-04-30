@@ -42,7 +42,6 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
     ]
 
     today = datetime.today().strftime('%d-%m-%Y')
-    today = datetime.today().strftime('01-05-2025')
 
     # التأكد من أن الشيت يحتوي على الرؤوس الصحيحة
     headers = existing_data[0]  # Get headers from first row
