@@ -18,7 +18,12 @@ from gspread_formatting import format_cell_range, CellFormat, NumberFormat, Text
 import gspread
 from datetime import datetime
 
-def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output1002", creds_file="credentials.json"):
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
+
+
+def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output1005", creds_file="credentials.json"):
     # إعداد الاتصال بجوجل شيت
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
     creds = ServiceAccountCredentials.from_json_keyfile_name(creds_file, scope)
@@ -31,110 +36,92 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
 
     existing_data = sheet.get_all_values()
 
-    # رؤوس الأعمدة الرسمية
     fixed_headers = [
-        "match_url", "date", "competition", "Match", "stadium",
+        "id", "match_url", "date", "competition", "Match", "stadium",
         "company", "url", "info", "nights", "type",
     ]
 
     today = datetime.today().strftime('%d-%m-%Y')
-    # today = datetime.today().strftime('30-04-2025')
+    today = datetime.today().strftime('01-05-2025')
 
-    if len(existing_data) < 2 or fixed_headers != existing_data[0][:len(fixed_headers)]:
-        sheet.clear()
-        sheet.update([fixed_headers], 'A1')
-        existing_data = sheet.get_all_values()
+    # التأكد من أن الشيت يحتوي على الرؤوس الصحيحة
+    headers = existing_data[0]  # Get headers from first row
+    rows = existing_data[1:]  # All rows excluding the header
 
-    headers = existing_data[0]
-    rows = existing_data[1:]
-
-    if "url" not in headers or "type" not in headers:
-        print("❌ Error: 'url' or 'type' column not found in sheet headers.")
+    # إذا كانت الرؤوس متوافقة، لا نقوم بمسح الشيت
+    if fixed_headers != headers[:len(fixed_headers)]:
+        print("❌ Error: Headers in the sheet are not as expected.")
         print("📌 Current Headers:", headers)
+
+        # إضافة الأعمدة المفقودة
+        for header in fixed_headers:
+            if header not in headers:
+                headers.append(header)
+
+        sheet.update([headers], 'A1')  # تحديث الشيت بالرؤوس الجديدة
+
+    # التأكد من وجود عمودي 'id' و 'url'
+    if "id" not in headers or "url" not in headers:
+        print("❌ Error: 'id' or 'url' column not found in sheet headers.")
         return
 
-    if today not in headers:
-        headers.append(today)
-        sheet.update([headers], 'A1')
+    id_index = headers.index("id")  # تحديد الفهرس الخاص بـ 'id'
+    url_index = headers.index("url")  # تحديد الفهرس الخاص بـ 'url'
 
-    url_index = headers.index("url")
-    type_index = headers.index("type")
+    # إضافة عمود تاريخ اليوم إذا لم يكن موجودًا
+    if today not in headers:
+        headers.append(today)  # إضافة العمود الخاص بتاريخ اليوم في نهاية الرؤوس
+        sheet.update([headers], 'A1')  # تحديث الشيت بالرؤوس الجديدة
+
+    # تحديد الفهرس الخاص بالعمود `today` بعد إضافته
     today_index = headers.index(today)
 
-    # بناء مفتاح فريد للصفوف الحالية
-    row_map = {}
-    for i, row in enumerate(rows):
-        if len(row) > max(url_index, type_index):
-            key = f"{row[url_index]}__{row[type_index]}"
-            row_map[key] = (i + 2, row)  # الصف يبدأ من A2
-
-    updates = []
-    new_rows = []
+    # تخزين الصفوف في قاموس باستخدام (id) كمفتاح
+    id_to_row = {row[id_index]: row for row in rows if len(row) > id_index}
+    updated_rows = []
 
     for match in data:
-        url = match.get("url", "")
-        ticket_type = match.get("type", "")
-        price = match.get("price", "")
+        match_id = match.get("id", "")  # استخدام 'id' هنا
+        price = match.get("price", None)
+        url = match.get("url", "")  # الحصول على الـ url
 
-        if not url or not ticket_type:
-            continue
+        if not match_id or not url:
+            continue  # تخطي البيانات إذا لم يكن يوجد id أو url
 
-        key = f"{url}__{ticket_type}"
+        row = []
+        for h in headers:
+            if h == today:
+                row.append(price)  # إضافة السعر في عمود اليوم
+            else:
+                row.append(match.get(h, ""))
 
-        # صف موجود: نحدث العمود الجديد
-        if key in row_map:
-            row_num, existing_row = row_map[key]
+        # التحقق من تطابق 'id' في الصفوف الحالية
+        if match_id in id_to_row:
+            existing_row = id_to_row[match_id]
+
+            # التأكد من أن الصف يحتوي على العدد الصحيح من الأعمدة
             while len(existing_row) < len(headers):
-                existing_row.append("")
-            cell = gspread.utils.rowcol_to_a1(row_num, today_index + 1)
-            updates.append((cell, price))
+                existing_row.append("")  # إضافة الخلايا الفارغة لضمان التطابق مع الهيكل
+
+            existing_row[today_index] = price  # تحديث السعر
+            updated_rows.append(existing_row)
         else:
-            # صف جديد بالكامل
-            new_row = []
-            for h in headers:
-                if h == today:
-                    new_row.append(price)
-                elif h == "date":
-                    cleaned_date = clean_date_field(match.get(h, ""))
-                    print(cleaned_date)
-                    if re.match(r"\d{2}-\d{2}-\d{4}", cleaned_date):
-                        new_row.append(cleaned_date)
-                    else:
-                        new_row.append("")
-                else:
-                    new_row.append(match.get(h, ""))
-            while len(new_row) < len(headers):
-                new_row.append("")
-            new_rows.append(new_row)
+            # إذا لم يتم العثور على الـ id معًا، نقوم بإضافة صف جديد
+            while len(row) < len(headers):
+                row.append("")  # إضافة الخلايا الفارغة لضمان التطابق مع الهيكل
+            updated_rows.append(row)
 
-    if updates:
-        cell_list = sheet.range(f"{updates[0][0]}:{updates[-1][0]}")
-        for i, cell in enumerate(cell_list):
-            cell.value = updates[i][1]
-        sheet.update_cells(cell_list)
+    # إذا كان هناك أي بيانات محدثة، نقوم بتحديث الشيت
+    if updated_rows:
+        sheet.update(updated_rows, 'A2')
 
-    if new_rows:
-        sheet.append_rows(new_rows)
-
-    # try:
-    #     date_col_index = headers.index("date")
-    #     col_letter = chr(65 + date_col_index)
-    #     format_cell_range(sheet, f"{col_letter}2:{col_letter}", CellFormat(
-    #         numberFormat=NumberFormat(type='DATE', pattern='dd-mm-yyyy'),
-    #         horizontalAlignment='CENTER',
-    #         textFormat=TextFormat(bold=False)
-    #     ))
-    #     print(f"📅 Column '{col_letter}' formatted as Date.")
-    # except Exception as e:
-    #     print(f"⚠️ Couldn't apply date format: {e}")
-
-    # مشاركة الشيت مع إيميلك
+    # مشاركة الشيت مع بريدك الإلكتروني
     client.open(sheet_name).share('mostafaemadss21@gmail.com', perm_type='user', role='writer')
 
+    # عرض رابط الشيت
     sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet.spreadsheet.id}"
     print(f"🔗 Google Sheet URL: {sheet_url}")
     print("✅ Prices updated in Google Sheet.")
-
 
 
 ###################################################################################################################
@@ -156,6 +143,8 @@ def convert_url(original_url):
     path_parts = parsed.path.strip("/").split("/")
     if len(path_parts) >= 2:
         new_path = f"/go/{path_parts[0]}/{path_parts[1]}/"
+        id= path_parts[0]+path_parts[1]
+        print(id)
         new_url = f"{parsed.scheme}://{parsed.netloc}{new_path}"
         response = requests.get(new_url, allow_redirects=False)
         print(response.headers)
@@ -165,7 +154,7 @@ def convert_url(original_url):
             print(url_target)
         else:
             print("No ?utm_source= found.")
-        return url_target
+        return url_target,id
     return None
 
 #clean_date
@@ -431,7 +420,7 @@ def check_price_domain_price(data_json_ticket):
         if any(target.lower() in company.lower() for target in target_companies):
             print("⛔️ check - matched:", match['company'])
             link_company = match['url']
-            link_company_new = convert_url(link_company)
+            link_company_new, id = convert_url(link_company)
             print("➡️ checking price for:", link_company_new)
             print(match['price'])
             new_price = check_find_price(link_company_new, match['company'])
@@ -443,7 +432,8 @@ def check_price_domain_price(data_json_ticket):
             'info': match.get('info', ''),
             'price': match.get('price', ''),
             'nights': match.get('nights', ''),
-            'url': convert_url(match.get('url', '')) or '',
+            'url': convert_url(match.get('url', ''))[0] or '',
+            'id': convert_url(match.get('url', ''))[1] or '',
             'type': match.get('type', ''),
             'match_url': match.get('ulr_match', ''),
             'date': clean_date_field(match.get('date', '')),
@@ -451,7 +441,7 @@ def check_price_domain_price(data_json_ticket):
             'stadium': match.get('stadium', ''),
             'competition': match.get('competition', ''),
         }
-        # print(processed_match["date"])
+        print(processed_match)
         return processed_match
 
     with ThreadPoolExecutor(max_workers=10) as executor:
