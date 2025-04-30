@@ -42,6 +42,7 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
     ]
 
     today = datetime.today().strftime('%d-%m-%Y')
+    # today = datetime.today().strftime('01-05-2025')
 
     # التأكد من أن الشيت يحتوي على الرؤوس الصحيحة
     headers = existing_data[0]  # Get headers from first row
@@ -80,8 +81,17 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
     updated_rows = []
 
     for match in data:
-        match_id = match.get("id", "")  # استخدام 'id' هنا
-        price = match.get("price", None)
+
+        try:
+            match_id = int(match.get("id", ""))
+        except (ValueError, TypeError):
+            continue  # تجاهل الصف إذا الـ id مش رقم
+
+        try:
+            price = int(match.get("price", 0))
+        except (ValueError, TypeError):
+            price = 0  # أو continue لو عايز تتجاهل الصف
+
         url = match.get("url", "")  # الحصول على الـ url
 
         if not match_id or not url:
@@ -90,7 +100,23 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
         row = []
         for h in headers:
             if h == today:
-                row.append(price)  # إضافة السعر في عمود اليوم
+                row.append(price)
+            elif h == "id":
+                try:
+                    row.append(int(match.get("id", 0)))
+                except:
+                    row.append("")
+            elif h == "date":
+                date_obj = clean_date_field(match.get("date", ""))
+                if date_obj:
+                    row.append(date_obj.strftime('%d-%m-%Y'))  # تحويل التاريخ إلى نص قبل إضافته
+                else:
+                    row.append("")
+            elif h == "type":
+                try:
+                    row.append(int(match.get("type", 0)))
+                except:
+                    row.append("")
             else:
                 row.append(match.get(h, ""))
 
@@ -102,7 +128,11 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
             while len(existing_row) < len(headers):
                 existing_row.append("")  # إضافة الخلايا الفارغة لضمان التطابق مع الهيكل
 
-            existing_row[today_index] = price  # تحديث السعر
+            try:
+                existing_row[today_index] = int(price)
+            except:
+                existing_row[today_index] = ""
+
             updated_rows.append(existing_row)
         else:
             # إذا لم يتم العثور على الـ id معًا، نقوم بإضافة صف جديد
@@ -117,7 +147,6 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
     # مشاركة الشيت مع بريدك الإلكتروني
     client.open(sheet_name).share('mostafaemadss21@gmail.com', perm_type='user', role='writer')
 
-    # عرض رابط الشيت
     sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet.spreadsheet.id}"
     print(f"🔗 Google Sheet URL: {sheet_url}")
     print("✅ Prices updated in Google Sheet.")
@@ -198,12 +227,16 @@ def clean_date_field(date_str):
         "%Y/%m/%d", "%Y.%m.%d"
     ]
 
+
     for fmt in date_formats:
         try:
             dt = datetime.strptime(date_str, fmt)
-            return dt.strftime("%d-%m-%Y")
+            # print(f"✅ Parsed Date: {dt.date()}")  # طباعة التواريخ التي تم معالجتها بنجاح
+
+            return dt.date()
         except ValueError:
             continue
+
 
     print(f"⚠️ Couldn't parse date: '{date_str}'")
     return date_str
