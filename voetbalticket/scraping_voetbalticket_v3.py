@@ -480,7 +480,7 @@ def check_price_domain_price(data_json_ticket):
 
 
 
-    save_to_google_sheet_with_prices_over_time(updated_data, sheet_name="Scraping Output1006")
+    save_to_google_sheet_with_prices_over_time(updated_data, sheet_name="Scraping Output1002")
 
 
 
