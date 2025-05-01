@@ -50,7 +50,7 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
     ]
 
     today = datetime.today().strftime('%d-%m-%Y')
-    today = datetime.today().strftime('02-%m-%Y')
+    # today = datetime.today().strftime('02-%m-%Y')
 
     headers = existing_data[0]
     rows = existing_data[1:]
