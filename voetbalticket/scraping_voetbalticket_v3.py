@@ -144,8 +144,10 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
         except Exception as e:
             print(f"⚠️ Error applying number format: {e}")
 
-    # مشاركة الملف
-    client.open(sheet_name).share('mostafaemadss21@gmail.com', perm_type='user', role='writer')
+    try:
+        client.open(sheet_name).share('mostafaemadss21@gmail.com', perm_type='user', role='writer')
+    except Exception as e:
+        print(f"⚠️ Could not share the sheet: {e}")
 
     sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet.spreadsheet.id}"
     print(f"🔗 Google Sheet URL: {sheet_url}")
@@ -173,7 +175,19 @@ def convert_url(original_url):
     if len(path_parts) >= 2:
         new_path = f"/go/{path_parts[0]}/{path_parts[1]}/"
         new_url = f"{parsed.scheme}://{parsed.netloc}{new_path}"
-        response = requests.get(new_url, allow_redirects=False)
+        response = None
+
+        for i in range(5):
+            try:
+                response = requests.get(new_url, allow_redirects=False, timeout=10)
+                break
+            except :
+                time.sleep(1)
+
+        if not response:
+            print(f"❌ Failed to connect to: {new_url}")
+            return None, new_url
+
         print(response.headers)
         url_target = response.headers.get('location')
         if "?utm_source=" in str(url_target):
@@ -182,7 +196,7 @@ def convert_url(original_url):
         else:
             print("No ?utm_source= found.")
         return url_target,new_url
-    return None
+    return None, None
 
 #clean_date
 month_map = {
@@ -274,10 +288,21 @@ def clean_price(price):
 #get data of all team in country and studium
 def get_match_data(team_url):
     headers = {"User-Agent": "Mozilla/5.0"}
-    response = requests.get(team_url, headers=headers)
+    response = None
 
-    if response.status_code != 200:
-        print("Failed to load team page")
+    for i in range(5):
+        try:
+            response = requests.get(team_url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                break
+            else:
+                print(f"⚠️ Attempt {i+1}: status code {response.status_code}")
+        except Exception as e:
+            print(f"❌ Attempt {i+1} failed for {team_url}: {e}")
+        time.sleep(1)
+
+    if not response or response.status_code != 200:
+        print(f"❌ Failed to load team page after retries: {team_url}")
         return []
 
     soup = BeautifulSoup(response.text, 'html.parser')
@@ -311,27 +336,37 @@ def get_match_data(team_url):
 ###################################################################################################################
 # get info for matchs in feauture
 def get_data_teams():
-    teams=[]
+    import time
+    teams = []
     url = "https://www.voetbalticket.com/teams/"
-    headers = {
-        "User-Agent": "Mozilla/5.0"
-    }
-    response = requests.get(url, headers=headers)
+    headers = {"User-Agent": "Mozilla/5.0"}
 
-    if response.status_code == 200:
-        soup = BeautifulSoup(response.text, "html.parser")
-        team_links = soup.select('.team-container a[href]')
-        for team in team_links:
-            teams.append(team.get('href'))
+    response = None
+    for i in range(5):
+        try:
+            response = requests.get(url, headers=headers, timeout=10)
+            if response.status_code == 200:
+                break
+            else:
+                print(f"⚠️ Attempt {i+1}: Status code {response.status_code}")
+        except Exception as e:
+            print(f"❌ Attempt {i+1} failed: {e}")
+        time.sleep(1)
 
+    if not response or response.status_code != 200:
+        print(f"❌ Failed to retrieve team page after retries: {url}")
+        return []
 
+    soup = BeautifulSoup(response.text, "html.parser")
+    team_links = soup.select('.team-container a[href]')
 
+    for team in team_links:
+        href = team.get('href')
+        if href:
+            teams.append(href.strip())
 
-        return teams
-
-
-    else:
-        print("failed to retrieve the page")
+    print(f"✅ Found {len(teams)} team URLs.")
+    return teams
 ###################################################################################################################
 #chcek price is valid
 def check_voetbalticketshop(soup):
@@ -361,14 +396,22 @@ def check_find_price(link_company_new,target_company):
     headers = {
         'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36',
     }
+    response = None
+    for i in range(5):
 
-    # response = requests.get(link_company_new, headers=headers, allow_redirects=False)
-    # Location=response.headers.get('Location')
-    # print(Location)
-    response = requests.get(link_company_new, headers=headers)
+        try:
+            response = requests.get(link_company_new, headers=headers, timeout=15)
+            if response.status_code == 200:
+                break
+            else:
+                print(f"⚠️ Attempt {i + 1}: Status {response.status_code} for {link_company_new}")
+        except Exception as e:
+            print(f"❌ Attempt {i + 1} failed for {link_company_new}: {e}")
+            time.sleep(1)
+
+
     if response.status_code == 200:
         soup = BeautifulSoup(response.text, 'html.parser')
-        # print(soup)
         if target_company=="Voetbalticketshop.nl":
             price=check_voetbalticketshop(soup)
             return price
