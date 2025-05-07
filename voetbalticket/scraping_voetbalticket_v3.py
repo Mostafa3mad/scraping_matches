@@ -183,7 +183,7 @@ def data_long():
     date_columns = df.columns[11:]
 
     # ====== تحويل البيانات إلى Long Format ======
-    df_long = df.melt(id_vars=["Match", "company"], value_vars=date_columns,
+    df_long = df.melt(id_vars=["Match", "company", "type"], value_vars=date_columns,
                       var_name="date", value_name="price")
 
     # ====== تحويل الأعمدة إلى أنواع مناسبة ======
