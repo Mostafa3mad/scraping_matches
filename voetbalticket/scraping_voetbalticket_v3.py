@@ -13,6 +13,7 @@ from gspread_formatting import CellFormat, NumberFormat, format_cell_range
 from datetime import datetime
 from gspread.cell import Cell
 from gspread.utils import rowcol_to_a1
+import pandas as pd
 
 from oauth2client.service_account import ServiceAccountCredentials
 from gspread_formatting import format_cell_range, CellFormat, NumberFormat, TextFormat
@@ -152,7 +153,59 @@ def save_to_google_sheet_with_prices_over_time(data, sheet_name="Scraping Output
     sheet_url = f"https://docs.google.com/spreadsheets/d/{sheet.spreadsheet.id}"
     print(f"🔗 Google Sheet URL: {sheet_url}")
     print("✅ Prices updated in Google Sheet.")
+    for i in range(5):
+        try:
+            data_long()
+            print("done_convert_data_long")
+            break
+        except Exception as e:
+            print(e)
 
+
+
+
+
+###################################################################################################################
+def data_long():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name("credentials.json", scope)
+    client = gspread.authorize(creds)
+
+    # ====== قراءة البيانات من الشيت الرئيسي ======
+    sheet = client.open("Scraping Output1002").worksheet("Sheet1")
+    data = sheet.get_all_records()
+    df = pd.DataFrame(data)
+
+    # ====== تنظيف أسماء الأعمدة ======
+    df.columns = df.columns.str.strip()
+
+    # ====== اختيار الأعمدة من العمود L فصاعدًا ======
+    date_columns = df.columns[11:]
+
+    # ====== تحويل البيانات إلى Long Format ======
+    df_long = df.melt(id_vars=["Match", "company"], value_vars=date_columns,
+                      var_name="date", value_name="price")
+
+    # ====== تحويل الأعمدة إلى أنواع مناسبة ======
+    df_long["date"] = pd.to_datetime(df_long["date"], format="%d-%m-%Y", errors="coerce")
+    df_long["price"] = pd.to_numeric(df_long["price"], errors="coerce")
+
+    # ====== تنظيف أسماء الشركات ======
+    df_long['company'] = df_long['company'].str.strip()
+    df_long['company'] = df_long['company'].str.replace(r'\.(com|nl)$', '', regex=True)
+    df_long = df_long[~df_long['company'].isin(['com', 'nl', '', None])]
+    df_long = df_long.dropna(subset=["Match", "company", "date", "price"])
+
+    # ====== رفع البيانات إلى الشيت الثاني ======
+    sh = client.open("Scraping Output1002")
+    try:
+        long_ws = sh.worksheet("LongData")
+    except:
+        long_ws = sh.add_worksheet(title="LongData", rows="1000", cols="10")
+
+    # ====== مسح الشيت القديم ورفع البيانات الجديدة ======
+    long_ws.clear()
+    long_ws.update([df_long.columns.tolist()] + df_long.astype(str).values.tolist())
 
 
 ###################################################################################################################
